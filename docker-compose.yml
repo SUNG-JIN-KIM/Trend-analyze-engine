@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trend-agent-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-trend_agent}
+      POSTGRES_USER: ${DB_USERNAME:-trend_agent}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your environment}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - trend-agent-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-trend_agent} -d ${DB_NAME:-trend_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/trend-agent/trend-agent/Dockerfile
+    container_name: trend-agent-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-trend_agent}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-trend_agent}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your environment}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in your environment}
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:5173}
+      ADMIN_OWNER_EMAIL: ${ADMIN_OWNER_EMAIL:-}
+      ADMIN_MAIL_ENABLED: ${ADMIN_MAIL_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-gemma4:e2b}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+volumes:
+  trend-agent-postgres-data:

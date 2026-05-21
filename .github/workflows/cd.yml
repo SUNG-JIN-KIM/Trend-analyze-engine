@@ -1,0 +1,36 @@
+name: CD Draft
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/trend-agent/trend-agent/Dockerfile
+          push: false
+          tags: trend-analyze-engine:latest
+
+      # TODO: 실제 서버/레지스트리 정보가 확정되면 아래 단계를 추가한다.
+      # - Docker registry login
+      # - Docker image push
+      # - SSH or cloud deployment command
+      # Required GitHub Secrets 후보:
+      #   DOCKERHUB_USERNAME
+      #   DOCKERHUB_TOKEN
+      #   DEPLOY_HOST
+      #   DEPLOY_USER
+      #   DEPLOY_SSH_KEY
