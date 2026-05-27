@@ -4989,6 +4989,159 @@ select:focus {
   border-radius: 20px;
 }
 
+.admin-thumb {
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(218, 220, 224, 0.9);
+  background: #f8fafd;
+}
+
+.youtube-trends-page {
+  display: grid;
+  gap: 24px;
+  padding: 28px;
+}
+
+.youtube-trends-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.youtube-trends-header p {
+  margin: 0 0 6px;
+  color: #5f6368;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.youtube-trends-header h1 {
+  margin: 0;
+  color: #202124;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.youtube-search-form {
+  display: flex;
+  gap: 10px;
+  min-width: min(420px, 100%);
+}
+
+.youtube-search-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(218, 220, 224, 0.95);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.youtube-search-form button {
+  border: 0;
+  border-radius: 12px;
+  padding: 0 18px;
+  background: #1a73e8;
+  color: white;
+  font-weight: 700;
+}
+
+.youtube-summary-grid,
+.youtube-ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.youtube-ranking-section {
+  display: grid;
+  gap: 14px;
+}
+
+.youtube-reaction-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(218, 220, 224, 0.9);
+  border-radius: 8px;
+  background: white;
+}
+
+.youtube-reaction-panel p {
+  margin: 0 0 6px;
+  color: #5f6368;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.youtube-reaction-panel h2 {
+  margin: 0;
+  color: #202124;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.youtube-keyword-list {
+  display: grid;
+  gap: 10px;
+}
+
+.youtube-keyword-list > strong {
+  color: #3c4043;
+  font-size: 14px;
+}
+
+.youtube-keyword-list > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.youtube-keyword-list span {
+  border: 1px solid rgba(218, 220, 224, 0.95);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #f8fafd;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.youtube-ranking-card {
+  display: grid;
+  gap: 8px;
+  min-height: 140px;
+  padding: 18px;
+  border: 1px solid rgba(218, 220, 224, 0.9);
+  border-radius: 8px;
+  background: white;
+}
+
+.youtube-ranking-card span {
+  color: #1a73e8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.youtube-ranking-card strong {
+  color: #202124;
+  font-size: 19px;
+}
+
+.youtube-ranking-card p {
+  margin: 0;
+  color: #188038;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.youtube-ranking-card small {
+  color: #5f6368;
+}
+
 @media (max-width: 860px) {
   .agent-app-shell {
     overflow: hidden;

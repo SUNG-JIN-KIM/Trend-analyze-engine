@@ -16,6 +16,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @Component
 public class JwtTokenProvider {
@@ -28,6 +29,7 @@ public class JwtTokenProvider {
     private final ObjectMapper objectMapper;
     private final Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
     private final Base64.Decoder decoder = Base64.getUrlDecoder();
+    private final String serverBootId = UUID.randomUUID().toString();
 
     public JwtTokenProvider(AuthProperties authProperties, ObjectMapper objectMapper) {
         this.authProperties = authProperties;
@@ -48,6 +50,7 @@ public class JwtTokenProvider {
         payload.put("role", user.getRole().name());
         payload.put("iat", now.getEpochSecond());
         payload.put("exp", expiresAt.getEpochSecond());
+        payload.put("boot", serverBootId);
 
         String signingInput = encodeJson(header) + "." + encodeJson(payload);
         return signingInput + "." + sign(signingInput);
@@ -75,6 +78,9 @@ public class JwtTokenProvider {
             );
             long expiresAt = toLong(payload.get("exp"));
             if (expiresAt <= Instant.now().getEpochSecond()) {
+                return Optional.empty();
+            }
+            if (!serverBootId.equals(stringValue(payload.get("boot")))) {
                 return Optional.empty();
             }
             return Optional.of(new JwtClaims(

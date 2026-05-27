@@ -7,8 +7,19 @@ public record AgentPlanningContext(
         String previousSummary,
         String previousReport,
         List<String> previousConceptTitles,
-        ConversationMemorySummaryResponse memorySummary
+        ConversationMemorySummaryResponse memorySummary,
+        List<String> recentMessages
 ) {
+    public AgentPlanningContext(
+            String previousMessage,
+            String previousSummary,
+            String previousReport,
+            List<String> previousConceptTitles,
+            ConversationMemorySummaryResponse memorySummary
+    ) {
+        this(previousMessage, previousSummary, previousReport, previousConceptTitles, memorySummary, List.of());
+    }
+
     public AgentPlanningContext(
             String previousMessage,
             String previousSummary,
@@ -19,6 +30,6 @@ public record AgentPlanningContext(
     }
 
     public static AgentPlanningContext empty() {
-        return new AgentPlanningContext(null, null, null, List.of(), null);
+        return new AgentPlanningContext(null, null, null, List.of(), null, List.of());
     }
 }

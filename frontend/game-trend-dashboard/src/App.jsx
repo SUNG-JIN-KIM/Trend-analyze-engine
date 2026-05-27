@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   getStoredAccessToken,
   login,
+  logout,
   register,
   storeAccessToken,
 } from './api/gameTrendApi.js';
@@ -22,10 +23,12 @@ import LoginPage from './pages/LoginPage.jsx';
 import OAuthCallbackPage from './pages/OAuthCallbackPage.jsx';
 import RankingsPage from './pages/RankingsPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import YoutubeTrendsPage from './pages/YoutubeTrendsPage.jsx';
 
 const baseRoutes = [
   { path: '/agent', label: 'Agent', description: '자연어 질문' },
   { path: '/rankings', label: '실시간 순위', description: '뜨는 게임' },
+  { path: '/youtube-trends', label: 'YouTube 트렌드', description: '영상 관심도' },
 ];
 
 const authenticatedRoutes = [
@@ -47,12 +50,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const accessToken = getStoredAccessToken();
+    let cancelled = false;
+    const searchParams = new URLSearchParams(window.location.search);
+    const oauthToken = searchParams.get('token') || searchParams.get('accessToken');
+    const accessToken = oauthToken || getStoredAccessToken();
+
     if (!accessToken) {
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    let cancelled = false;
+    if (oauthToken) {
+      storeAccessToken(oauthToken);
+      window.history.replaceState({}, '', '/');
+      setCurrentPath('/');
+    }
+
     setIsAuthLoading(true);
     getCurrentUser()
       .then((user) => {
@@ -97,6 +111,10 @@ function App() {
       '/admin/approval-requests',
       '/admin/chats',
       '/admin/conversations',
+      '/admin/youtube',
+      '/admin/youtube/videos',
+      '/admin/youtube/logs',
+      '/admin/youtube/keywords',
       '/admin/reports',
       '/admin/audit-logs',
       '/admin/settings',
@@ -105,14 +123,19 @@ function App() {
     []
   );
   const isAdminPath = currentPath === '/admin' || currentPath.startsWith('/admin/');
-  const activePath = isAdminPath || routePaths.has(currentPath) ? currentPath : '/';
+  const isYoutubeTrendPath = currentPath === '/youtube-trends' || currentPath.startsWith('/youtube-trends/');
+  const activePath = isAdminPath || isYoutubeTrendPath || routePaths.has(currentPath) ? currentPath : '/';
 
-  const navigate = (path) => {
+  const navigate = (path, options = {}) => {
     const nextPath = normalizePath(path);
     if (nextPath === activePath) {
       return;
     }
-    window.history.pushState({}, '', nextPath);
+    if (options.replace) {
+      window.history.replaceState({}, '', nextPath);
+    } else {
+      window.history.pushState({}, '', nextPath);
+    }
     setCurrentPath(nextPath);
     dashboard.clearError();
     dashboard.clearSuccess();
@@ -186,7 +209,22 @@ function App() {
     }
   };
 
+  const handleOAuthSession = async () => {
+    setIsAuthLoading(true);
+    dashboard.clearError();
+    dashboard.clearSuccess();
+    try {
+      const user = await getCurrentUser();
+      setAuthUser(user);
+      dashboard.clearLoginRequiredNotice();
+      return user;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
   const handleLogout = () => {
+    logout().catch(() => {});
     clearStoredAccessToken();
     setAuthUser(null);
     dashboard.clearConversationState();
@@ -251,6 +289,13 @@ function App() {
   };
 
   const renderPage = () => {
+    if (activePath === '/youtube-trends' || activePath.startsWith('/youtube-trends/')) {
+      const keyword = activePath.startsWith('/youtube-trends/')
+        ? decodeURIComponent(activePath.substring('/youtube-trends/'.length))
+        : '';
+      return <YoutubeTrendsPage keyword={keyword} />;
+    }
+
     switch (activePath) {
       case '/login':
         return (
@@ -272,8 +317,9 @@ function App() {
         return (
           <OAuthCallbackPage
             onOAuthToken={handleOAuthToken}
-            onGoHome={() => navigate('/')}
-            onGoLogin={() => navigate('/login')}
+            onOAuthSession={handleOAuthSession}
+            onGoHome={() => navigate('/', { replace: true })}
+            onGoLogin={() => navigate('/login', { replace: true })}
           />
         );
       case '/history':
@@ -308,7 +354,9 @@ function App() {
       case '/':
         return (
           <HomePage
+            authUser={authUser}
             isAnalyzing={dashboard.isAnalyzingOnboarding || dashboard.isAnalyzingFollowUp}
+            onNavigate={navigate}
             onAsk={(question) => {
               navigate('/agent');
               dashboard.analyzeNewQuestion(question);
@@ -318,7 +366,9 @@ function App() {
       default:
         return (
           <HomePage
+            authUser={authUser}
             isAnalyzing={dashboard.isAnalyzingOnboarding || dashboard.isAnalyzingFollowUp}
+            onNavigate={navigate}
             onAsk={(question) => {
               navigate('/agent');
               dashboard.analyzeNewQuestion(question);

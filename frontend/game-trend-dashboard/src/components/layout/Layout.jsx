@@ -13,7 +13,7 @@ function Layout({
   const isHomePage = currentPath === '/';
 
   return (
-    <div className={`app-shell ${isAgentPage ? 'agent-app-shell' : ''}`}>
+    <div className={`app-shell ${isHomePage ? 'home-app-shell' : ''} ${isAgentPage ? 'agent-app-shell' : ''}`}>
       <div className="background-grid" />
       <header className={`hero-header ${isHomePage ? 'home-shell-header' : ''} ${isAgentPage ? 'agent-shell-header' : ''}`}>
         <div className="hero-topline">
@@ -34,6 +34,7 @@ function Layout({
           <AuthNavigation
             authUser={authUser}
             isAuthLoading={isAuthLoading}
+            onNavigate={onNavigate}
             onGoLogin={onGoLogin}
             onGoRegister={onGoRegister}
             onLogout={onLogout}
@@ -64,7 +65,7 @@ function Layout({
   );
 }
 
-function AuthNavigation({ authUser, isAuthLoading, onGoLogin, onGoRegister, onLogout }) {
+function AuthNavigation({ authUser, isAuthLoading, onNavigate, onGoLogin, onGoRegister, onLogout }) {
   if (isAuthLoading && !authUser) {
     return (
       <div className="auth-nav-panel">
@@ -74,10 +75,17 @@ function AuthNavigation({ authUser, isAuthLoading, onGoLogin, onGoRegister, onLo
   }
 
   if (authUser) {
+    const isAdminUser = ['ADMIN', 'OWNER'].includes(String(authUser.role || '').toUpperCase());
+
     return (
       <div className="auth-nav-panel logged-in">
         <span>로그인</span>
         <strong>{authUser.nickname || authUser.email}</strong>
+        {isAdminUser && (
+          <button className="auth-nav-button primary" type="button" onClick={() => onNavigate?.('/admin/dashboard')}>
+            관리자
+          </button>
+        )}
         <button className="auth-nav-button" type="button" onClick={onLogout}>
           로그아웃
         </button>

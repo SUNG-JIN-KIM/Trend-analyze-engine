@@ -34,6 +34,7 @@ async function request(path, options = {}) {
   const { headers: optionHeaders, ...requestOptions } = options;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...requestOptions,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -47,9 +48,10 @@ async function request(path, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const message = typeof body === 'string'
-      ? body
-      : body.message || 'API 요청 중 오류가 발생했습니다.';
+    if (response.status === 401) {
+      clearStoredAccessToken();
+    }
+    const message = resolveApiErrorMessage(body);
     throw new ApiError(message, {
       status: response.status,
       code: typeof body === 'string' ? undefined : body.code,
@@ -59,6 +61,16 @@ async function request(path, options = {}) {
   }
 
   return body;
+}
+
+function resolveApiErrorMessage(body) {
+  if (typeof body === 'string') {
+    return body;
+  }
+  if (Array.isArray(body?.details) && body.details.length > 0) {
+    return body.details[0];
+  }
+  return body?.message || 'API 요청 중 오류가 발생했습니다.';
 }
 
 export function register(payload) {
@@ -89,6 +101,12 @@ export function login(payload) {
   });
 }
 
+export function logout() {
+  return request('/api/auth/logout', {
+    method: 'POST',
+  });
+}
+
 export function adminLogin(payload) {
   return request('/api/auth/admin/login', {
     method: 'POST',
@@ -109,6 +127,17 @@ function toQueryString(params = {}) {
   });
   const text = query.toString();
   return text ? `?${text}` : '';
+}
+
+function toKeywordQuery(keyword) {
+  const normalizedKeyword = String(keyword ?? '').trim();
+  if (!normalizedKeyword) {
+    throw new ApiError('수집할 게임 키워드를 입력해주세요.', {
+      status: 400,
+      code: 'INVALID_KEYWORD',
+    });
+  }
+  return `?keyword=${encodeURIComponent(normalizedKeyword)}`;
 }
 
 export function getAdminDashboard() {
@@ -207,6 +236,44 @@ export function deleteAdminConversation(conversationId, payload = {}) {
 
 export function getAdminAuditLogs(params = {}) {
   return request(`/api/admin/audit-logs${toQueryString(params)}`);
+}
+
+export function getAdminYoutubeLogs(params = {}) {
+  return request(`/admin/youtube/logs${toQueryString(params)}`);
+}
+
+export function getAdminYoutubeVideos(params = {}) {
+  return request(`/admin/youtube/videos${toQueryString(params)}`);
+}
+
+export function getAdminYoutubeKeywords(params = {}) {
+  return request(`/admin/youtube/keywords${toQueryString(params)}`);
+}
+
+export function getAdminYoutubeDashboard() {
+  return request('/admin/youtube/dashboard');
+}
+
+export function collectAdminYoutube(keyword) {
+  const query = toKeywordQuery(keyword);
+  return request(`/admin/youtube/collect${query}`, {
+    method: 'POST',
+  });
+}
+
+export function collectAdminYoutubeComments(keyword) {
+  const query = toKeywordQuery(keyword);
+  return request(`/admin/youtube/comments/collect${query}`, {
+    method: 'POST',
+  });
+}
+
+export function getYoutubeTopGames(limit = 10) {
+  return request(`/api/youtube/top-games${toQueryString({ limit })}`);
+}
+
+export function getYoutubeTrend(keyword) {
+  return request(`/api/youtube/trends${toQueryString({ keyword })}`);
 }
 
 export function getOAuthAuthorizationUrl(provider) {

@@ -71,7 +71,7 @@ llm:
   base-url: "${LLM_BASE_URL:http://localhost:11434/v1}"
   model: "${LLM_MODEL:gemma4:e2b}"
   timeout-ms: "${LLM_TIMEOUT_MS:30000}"
-  temperature: "${LLM_TEMPERATURE:0.2}"
+  temperature: "${LLM_TEMPERATURE:0.7}"
 
 # 기본 JWT 인증 설정.
 # 운영 환경에서는 AUTH_JWT_SECRET을 충분히 긴 임의 문자열로 반드시 교체한다.
@@ -98,7 +98,7 @@ app:
   frontend-url: "${APP_FRONTEND_URL:http://localhost:5173}"
   admin:
     approval-email: "${ADMIN_APPROVAL_EMAIL:ksjcloud98@gmail.com}"
-    owner-email: "${ADMIN_OWNER_EMAIL:}"
+    owner-email: "${OWNER_EMAIL:ksjcloud98@gmail.com}"
     approval-token-expire-minutes: "${ADMIN_APPROVAL_TOKEN_EXPIRE_MINUTES:1440}"
     approval-link-base-url: "${ADMIN_APPROVAL_LINK_BASE_URL:http://localhost:8080}"
     mail:
@@ -111,6 +111,15 @@ steam:
   base-url: "${STEAM_BASE_URL:https://store.steampowered.com}"
   timeout-ms: "${STEAM_TIMEOUT_MS:10000}"
   api-key: "${STEAM_API_KEY:}"
+
+youtube:
+  api:
+    key: "${YOUTUBE_API_KEY:}"
+    base-url: "${YOUTUBE_API_BASE_URL:https://www.googleapis.com/youtube/v3}"
+    max-results: "${YOUTUBE_MAX_RESULTS:10}"
+    region-code: "${YOUTUBE_REGION_CODE:KR}"
+    relevance-language: "${YOUTUBE_RELEVANCE_LANGUAGE:ko}"
+    collect-cooldown-minutes: "${YOUTUBE_COLLECT_COOLDOWN_MINUTES:360}"
 
 # 라이브 트렌드 자동 갱신 설정.
 # 외부 라이브 플랫폼 데이터는 사용자 요청마다 조회하지 않고, 스케줄러가 snapshot 으로 갱신한다.
@@ -145,3 +154,9 @@ live-trends:
     steam:
       use-public-api: "${STEAM_USE_PUBLIC_API:true}"
       api-key: "${STEAM_API_KEY:}"
+
+server:
+  servlet:
+    session:
+      persistent: false
+      timeout: 30m

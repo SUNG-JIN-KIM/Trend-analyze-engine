@@ -11,6 +11,7 @@ import com.gametrend.agent.auth.entity.UserRole;
 import com.gametrend.agent.auth.repository.UserRepository;
 import com.gametrend.agent.conversation.entity.ConversationStatus;
 import com.gametrend.agent.conversation.repository.ConversationRepository;
+import com.gametrend.agent.youtube.service.YoutubeTrendService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,7 @@ public class AdminDashboardService {
     private final ChatRepository chatRepository;
     private final ChatReportRepository chatReportRepository;
     private final ConversationRepository conversationRepository;
+    private final YoutubeTrendService youtubeTrendService;
 
     public AdminDashboardResponse getDashboard() {
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
@@ -35,6 +37,7 @@ public class AdminDashboardService {
         var users = StreamSupport.stream(userRepository.findAll().spliterator(), false).toList();
 
         var conversations = StreamSupport.stream(conversationRepository.findAll().spliterator(), false).toList();
+        var youtubeSummary = youtubeTrendService.getDashboardSummary();
 
         return new AdminDashboardResponse(
                 users.size(),
@@ -58,7 +61,15 @@ public class AdminDashboardService {
                 chatReportRepository.count(),
                 conversations.stream()
                         .filter(conversation -> conversation.statusOrActive() == ConversationStatus.HIDDEN)
-                        .count()
+                        .count(),
+                youtubeSummary.totalVideoCount(),
+                youtubeSummary.todayCollectCount(),
+                youtubeSummary.successCollectCount(),
+                youtubeSummary.failureCollectCount(),
+                youtubeSummary.topGameKeyword(),
+                youtubeSummary.latestCollectKeyword(),
+                youtubeTrendService.findLogs().stream().limit(5).toList(),
+                youtubeTrendService.findTopGames(10)
         );
     }
 

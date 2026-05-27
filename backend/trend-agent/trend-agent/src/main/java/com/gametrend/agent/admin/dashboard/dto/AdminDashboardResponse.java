@@ -1,5 +1,10 @@
 package com.gametrend.agent.admin.dashboard.dto;
 
+import com.gametrend.agent.youtube.dto.GameYoutubeTrendScoreResponse;
+import com.gametrend.agent.youtube.dto.YoutubeCollectLogResponse;
+
+import java.util.List;
+
 public record AdminDashboardResponse(
         long totalUserCount,
         long userCount,
@@ -12,6 +17,14 @@ public record AdminDashboardResponse(
         long hiddenChatCount,
         long totalConversationCount,
         long reportedConversationCount,
-        long hiddenConversationCount
+        long hiddenConversationCount,
+        long youtubeVideoCount,
+        long todayYoutubeCollectCount,
+        long youtubeCollectSuccessCount,
+        long youtubeCollectFailureCount,
+        String topYoutubeGameKeyword,
+        String latestYoutubeCollectKeyword,
+        List<YoutubeCollectLogResponse> recentYoutubeCollectLogs,
+        List<GameYoutubeTrendScoreResponse> topYoutubeGames
 ) {
 }

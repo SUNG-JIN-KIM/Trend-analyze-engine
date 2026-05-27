@@ -7,6 +7,7 @@ import com.gametrend.agent.auth.exception.AuthRequiredException;
 import com.gametrend.agent.auth.service.CurrentUser;
 import com.gametrend.agent.auth.service.CurrentUserService;
 import com.gametrend.agent.conversation.entity.Conversation;
+import com.gametrend.agent.conversation.entity.ConversationMessage;
 import com.gametrend.agent.conversation.service.ConversationService;
 import com.gametrend.agent.gameimage.GameImageResolver;
 import com.gametrend.agent.infrastructure.llm.LlmClient;
@@ -180,7 +181,7 @@ public class OnboardingService {
         String sessionId = resolveSessionId(requestWithConversation, conversationId, persistentConversation);
         ConversationMemorySummaryResponse memoryBefore = findOrCreateMemory(sessionId, persistentConversation.conversationId());
         FollowUpFocus followUpFocus = detectFollowUpFocus(request, conversationContext);
-        AgentPlanningContext planningContext = toAgentPlanningContext(conversationContext, memoryBefore);
+        AgentPlanningContext planningContext = toAgentPlanningContext(conversationContext, memoryBefore, persistentConversation);
         AgentPlan agentPlan = planAgent(request, planningContext);
         AgentQueryConditionResponse queryCondition = queryConditionFromPlan(request, agentPlan, conversationContext);
         if (isConversationalOnlyPlan(agentPlan)) {
@@ -710,10 +711,12 @@ public class OnboardingService {
 
     private AgentPlanningContext toAgentPlanningContext(
             ConversationContext conversationContext,
-            ConversationMemorySummaryResponse memorySummary
+            ConversationMemorySummaryResponse memorySummary,
+            PersistentConversation persistentConversation
     ) {
+        List<String> recentMessages = recentConversationLines(persistentConversation);
         if (conversationContext == null || !conversationContext.hasHistory()) {
-            return new AgentPlanningContext(null, null, null, List.of(), memorySummary);
+            return new AgentPlanningContext(null, null, null, List.of(), memorySummary, recentMessages);
         }
         return new AgentPlanningContext(
                 conversationContext.message(),
@@ -724,8 +727,28 @@ public class OnboardingService {
                         : conversationContext.recommendedConcepts().stream()
                         .map(RecommendedConceptResponse::title)
                         .toList(),
-                memorySummary
+                memorySummary,
+                recentMessages
         );
+    }
+
+    private List<String> recentConversationLines(PersistentConversation persistentConversation) {
+        if (conversationService == null || persistentConversation == null || !persistentConversation.hasConversation()) {
+            return List.of();
+        }
+        return conversationService.findRecentMessages(persistentConversation.conversation(), 8)
+                .stream()
+                .map(this::formatRecentConversationLine)
+                .filter(line -> line != null && !line.isBlank())
+                .toList();
+    }
+
+    private String formatRecentConversationLine(ConversationMessage message) {
+        if (message == null || message.getContent() == null || message.getContent().isBlank()) {
+            return "";
+        }
+        String role = "ASSISTANT".equalsIgnoreCase(message.getRole()) ? "Assistant" : "User";
+        return "%s: %s".formatted(role, truncateForPrompt(message.getContent().replaceAll("\\s+", " ").strip(), 300));
     }
 
     private AgentPlan planAgent(OnboardingAnalyzeRequest request, AgentPlanningContext planningContext) {

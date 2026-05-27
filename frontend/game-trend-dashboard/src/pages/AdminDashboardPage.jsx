@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   approveAdminApprovalRequest,
+  collectAdminYoutube,
+  collectAdminYoutubeComments,
   deleteAdminConversation,
   getAdminApprovalRequests,
   getAdminAuditLogs,
   getAdminConversations,
   getAdminDashboard,
   getAdminUsers,
+  getAdminYoutubeDashboard,
+  getAdminYoutubeLogs,
+  getAdminYoutubeKeywords,
+  getAdminYoutubeVideos,
+  getYoutubeTopGames,
   hideAdminConversation,
   rejectAdminApprovalRequest,
   restoreAdminConversation,
@@ -19,7 +26,10 @@ const menuItems = [
   { path: '/admin/users', label: 'Users' },
   { path: '/admin/approval-requests', label: 'Admin Approvals' },
   { path: '/admin/conversations', label: 'Conversations' },
-  { path: '/admin/reports', label: 'Reports' },
+  { path: '/admin/youtube', label: 'YouTube Collect' },
+  { path: '/admin/youtube/videos', label: 'YouTube Videos' },
+  { path: '/admin/youtube/logs', label: 'YouTube Logs' },
+  { path: '/admin/youtube/keywords', label: 'YouTube Keywords' },
   { path: '/admin/audit-logs', label: 'Audit Logs' },
   { path: '/admin/settings', label: 'Settings' },
 ];
@@ -44,6 +54,11 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
   const [approvals, setApprovals] = useState(emptyPage);
   const [conversations, setConversations] = useState(emptyPage);
   const [auditLogs, setAuditLogs] = useState(emptyPage);
+  const [youtubeDashboard, setYoutubeDashboard] = useState({ recentLogs: [], topGames: [] });
+  const [youtubeTopGames, setYoutubeTopGames] = useState([]);
+  const [youtubeLogs, setYoutubeLogs] = useState(emptyPage);
+  const [youtubeVideos, setYoutubeVideos] = useState(emptyPage);
+  const [youtubeKeywords, setYoutubeKeywords] = useState(emptyPage);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -78,6 +93,26 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
     page: 0,
     size: 10,
   });
+  const [youtubeLogFilters, setYoutubeLogFilters] = useState({
+    keyword: '',
+    status: '',
+    page: 0,
+    size: 10,
+  });
+  const [youtubeVideoFilters, setYoutubeVideoFilters] = useState({
+    title: '',
+    keyword: '',
+    channelTitle: '',
+    sort: 'viewCount',
+    page: 0,
+    size: 10,
+  });
+  const [youtubeKeywordFilters, setYoutubeKeywordFilters] = useState({
+    keyword: '',
+    sentiment: '',
+    page: 0,
+    size: 10,
+  });
 
   const loadDashboard = async () => {
     const data = await getAdminDashboard();
@@ -104,6 +139,33 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
     setAuditLogs(data);
   };
 
+  const loadYoutubeDashboard = async () => {
+    const [data, topGames] = await Promise.all([
+      getAdminYoutubeDashboard(),
+      getYoutubeTopGames(10),
+    ]);
+    setYoutubeTopGames(topGames);
+    setYoutubeDashboard({
+      ...data,
+      topGames: topGames.length > 0 ? topGames : data.topGames,
+    });
+  };
+
+  const loadYoutubeLogs = async () => {
+    const data = await getAdminYoutubeLogs(youtubeLogFilters);
+    setYoutubeLogs(data);
+  };
+
+  const loadYoutubeVideos = async () => {
+    const data = await getAdminYoutubeVideos(youtubeVideoFilters);
+    setYoutubeVideos(data);
+  };
+
+  const loadYoutubeKeywords = async () => {
+    const data = await getAdminYoutubeKeywords(youtubeKeywordFilters);
+    setYoutubeKeywords(data);
+  };
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -122,6 +184,14 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
           await loadConversations();
         } else if (normalizedPath === '/admin/audit-logs') {
           await loadAuditLogs();
+        } else if (normalizedPath === '/admin/youtube') {
+          await loadYoutubeDashboard();
+        } else if (normalizedPath === '/admin/youtube/logs') {
+          await loadYoutubeLogs();
+        } else if (normalizedPath === '/admin/youtube/videos') {
+          await loadYoutubeVideos();
+        } else if (normalizedPath === '/admin/youtube/keywords') {
+          await loadYoutubeKeywords();
         }
       } catch (error) {
         if (!cancelled) {
@@ -137,7 +207,7 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
     return () => {
       cancelled = true;
     };
-  }, [normalizedPath, userFilters, approvalFilters, chatFilters, auditFilters]);
+  }, [normalizedPath, userFilters, approvalFilters, chatFilters, auditFilters, youtubeLogFilters, youtubeVideoFilters, youtubeKeywordFilters]);
 
   const title = useMemo(() => {
     const current = menuItems.find((item) => item.path === normalizedPath);
@@ -154,6 +224,10 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
       if (normalizedPath === '/admin/conversations') await loadConversations();
       if (normalizedPath === '/admin/reports') await loadConversations();
       if (normalizedPath === '/admin/audit-logs') await loadAuditLogs();
+      if (normalizedPath === '/admin/youtube') await loadYoutubeDashboard();
+      if (normalizedPath === '/admin/youtube/logs') await loadYoutubeLogs();
+      if (normalizedPath === '/admin/youtube/videos') await loadYoutubeVideos();
+      if (normalizedPath === '/admin/youtube/keywords') await loadYoutubeKeywords();
     } catch (error) {
       setErrorMessage(error.message || '관리자 데이터를 불러오지 못했습니다.');
     } finally {
@@ -271,6 +345,47 @@ function AdminDashboardPage({ authUser, currentPath, onNavigate, onLogout }) {
           />
         )}
 
+        {normalizedPath === '/admin/youtube' && (
+          <YoutubeCollectSection
+            dashboard={youtubeDashboard}
+            topGames={youtubeTopGames}
+            canCollect={['ADMIN', 'OWNER'].includes(String(authUser?.role || '').toUpperCase())}
+            onCollect={async (keyword) => {
+              const result = await collectAdminYoutube(keyword);
+              await reloadCurrent();
+              return result;
+            }}
+          />
+        )}
+
+        {normalizedPath === '/admin/youtube/videos' && (
+          <YoutubeVideosSection
+            page={youtubeVideos}
+            filters={youtubeVideoFilters}
+            setFilters={setYoutubeVideoFilters}
+          />
+        )}
+
+        {normalizedPath === '/admin/youtube/logs' && (
+          <YoutubeLogsSection
+            page={youtubeLogs}
+            filters={youtubeLogFilters}
+            setFilters={setYoutubeLogFilters}
+          />
+        )}
+
+        {normalizedPath === '/admin/youtube/keywords' && (
+          <YoutubeKeywordsSection
+            page={youtubeKeywords}
+            filters={youtubeKeywordFilters}
+            setFilters={setYoutubeKeywordFilters}
+            onCollectComments={async (keyword) => {
+              await collectAdminYoutubeComments(keyword);
+              await reloadCurrent();
+            }}
+          />
+        )}
+
         {normalizedPath === '/admin/settings' && (
           <SettingsSection authUser={authUser} />
         )}
@@ -291,17 +406,94 @@ function DashboardSection({ dashboard }) {
     { label: '전체 대화', value: dashboard?.totalConversationCount ?? 0 },
     { label: '신고된 대화', value: dashboard?.reportedConversationCount ?? 0 },
     { label: '숨김 대화', value: dashboard?.hiddenConversationCount ?? 0 },
+    { label: '총 YouTube 영상', value: dashboard?.youtubeVideoCount ?? 0 },
+    { label: '오늘 YouTube 수집', value: dashboard?.todayYoutubeCollectCount ?? 0 },
+    { label: 'YouTube 성공', value: dashboard?.youtubeCollectSuccessCount ?? 0 },
+    { label: 'YouTube 실패', value: dashboard?.youtubeCollectFailureCount ?? 0 },
   ];
+  const recentYoutubeLogs = dashboard?.recentYoutubeCollectLogs || [];
+  const topYoutubeGames = dashboard?.topYoutubeGames || [];
 
   return (
-    <section className="admin-stat-grid">
-      {stats.map((stat) => (
-        <article className="admin-stat-card" key={stat.label}>
-          <span>{stat.label}</span>
-          <strong>{formatCount(stat.value)}</strong>
+    <>
+      <section className="admin-stat-grid">
+        {stats.map((stat) => (
+          <article className="admin-stat-card" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{formatCount(stat.value)}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="admin-stat-grid compact">
+        <article className="admin-stat-card wide">
+          <span>YouTube 관심도 1위 게임</span>
+          <strong>{dashboard?.topYoutubeGameKeyword || '-'}</strong>
         </article>
-      ))}
-    </section>
+        <article className="admin-stat-card wide">
+          <span>최근 수집 키워드</span>
+          <strong>{dashboard?.latestYoutubeCollectKeyword || '-'}</strong>
+        </article>
+      </section>
+
+      <AdminPanel title="YouTube 인기 게임 TOP 10">
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>게임</th>
+                <th>키워드</th>
+                <th>관심도</th>
+                <th>조회수</th>
+                <th>영상</th>
+                <th>수집일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topYoutubeGames.map((game) => (
+                <tr key={game.keyword}>
+                  <td>{game.gameTitle}</td>
+                  <td>{game.keyword}</td>
+                  <td>{formatScore(game.youtubeInterestScore)}</td>
+                  <td>{formatCount(game.totalViewCount)}</td>
+                  <td>{formatCount(game.videoCount)}</td>
+                  <td>{formatDate(game.collectedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {topYoutubeGames.length === 0 && <p className="admin-empty">수집된 YouTube 트렌드 점수가 없습니다.</p>}
+      </AdminPanel>
+
+      <AdminPanel title="최근 YouTube 수집 상태">
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>키워드</th>
+                <th>상태</th>
+                <th>영상 수</th>
+                <th>메시지</th>
+                <th>완료일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentYoutubeLogs.map((log) => (
+                <tr key={log.id}>
+                  <td>{log.keyword}</td>
+                  <td><StatusBadge value={log.status} /></td>
+                  <td>{formatCount(log.videoCount)}</td>
+                  <td>{log.message}</td>
+                  <td>{formatDate(log.completedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {recentYoutubeLogs.length === 0 && <p className="admin-empty">최근 YouTube 수집 로그가 없습니다.</p>}
+      </AdminPanel>
+    </>
   );
 }
 
@@ -499,6 +691,281 @@ function AuditLogsSection({ page, filters, setFilters }) {
   );
 }
 
+function YoutubeCollectSection({ dashboard, topGames: refreshedTopGames = [], canCollect, onCollect }) {
+  const [keyword, setKeyword] = useState('');
+  const [isCollecting, setIsCollecting] = useState(false);
+  const [message, setMessage] = useState('');
+  const topGames = refreshedTopGames.length > 0 ? refreshedTopGames : dashboard?.topGames || [];
+  const recentLogs = dashboard?.recentLogs || [];
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const nextKeyword = keyword.trim();
+    if (!nextKeyword) {
+      setMessage('게임 키워드를 입력해주세요.');
+      return;
+    }
+    setIsCollecting(true);
+    setMessage('');
+    try {
+      const result = await onCollect(nextKeyword);
+      setMessage(result?.message || 'YouTube 데이터 수집이 완료되었습니다.');
+      setKeyword(nextKeyword);
+    } catch (error) {
+      setMessage(error.message || 'YouTube 데이터 수집에 실패했습니다.');
+    } finally {
+      setIsCollecting(false);
+    }
+  };
+
+  return (
+    <>
+      <AdminPanel title="YouTube 데이터 수집">
+        {canCollect && (
+          <form className="admin-filter-grid" onSubmit={handleSubmit}>
+            <FilterInput label="게임 키워드" value={keyword} onChange={setKeyword} />
+            <label className="admin-filter-field">
+              <span>수집 실행</span>
+              <button type="submit" disabled={isCollecting}>
+                {isCollecting ? '수집 중' : '영상 수집'}
+              </button>
+            </label>
+          </form>
+        )}
+        {!canCollect && <p className="admin-empty">ADMIN 또는 OWNER만 YouTube 데이터를 수집할 수 있습니다.</p>}
+        {message && <p className="admin-auth-error">{message}</p>}
+        {topGames.length === 0 && (
+          <p className="admin-empty">저장된 YouTube 트렌드 분석 결과가 없습니다. 관리자 페이지에서 먼저 YouTube 데이터를 수집해주세요.</p>
+        )}
+      </AdminPanel>
+
+      <AdminPanel title="YouTube 관심도 TOP 게임">
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>게임</th>
+                <th>키워드</th>
+                <th>관심도</th>
+                <th>조회수</th>
+                <th>영상</th>
+                <th>수집일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topGames.map((game) => (
+                <tr key={game.keyword}>
+                  <td>{game.gameTitle || game.keyword}</td>
+                  <td>{game.keyword}</td>
+                  <td>{formatScore(game.youtubeInterestScore)}</td>
+                  <td>{formatCount(game.totalViewCount)}</td>
+                  <td>{formatCount(game.videoCount)}</td>
+                  <td>{formatDate(game.collectedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel title="최근 YouTube 수집 로그">
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>키워드</th>
+                <th>상태</th>
+                <th>영상 수</th>
+                <th>메시지</th>
+                <th>완료일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentLogs.map((log) => (
+                <tr key={log.id}>
+                  <td>{log.keyword}</td>
+                  <td><StatusBadge value={log.status} /></td>
+                  <td>{formatCount(log.videoCount)}</td>
+                  <td className="admin-content-cell">{log.message || '-'}</td>
+                  <td>{formatDate(log.completedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {recentLogs.length === 0 && <p className="admin-empty">아직 YouTube 수집 로그가 없습니다.</p>}
+      </AdminPanel>
+    </>
+  );
+}
+
+function YoutubeVideosSection({ page, filters, setFilters }) {
+  return (
+    <AdminPanel title="YouTube 수집 영상 목록">
+      <div className="admin-filter-grid">
+        <FilterInput label="영상 제목" value={filters.title} onChange={(title) => setFilters((prev) => ({ ...prev, title, page: 0 }))} />
+        <FilterInput label="게임 키워드" value={filters.keyword} onChange={(keyword) => setFilters((prev) => ({ ...prev, keyword, page: 0 }))} />
+        <FilterInput label="채널명" value={filters.channelTitle} onChange={(channelTitle) => setFilters((prev) => ({ ...prev, channelTitle, page: 0 }))} />
+        <FilterSelect label="정렬" value={filters.sort} onChange={(sort) => setFilters((prev) => ({ ...prev, sort, page: 0 }))} options={['viewCount', 'commentCount', 'publishedAt', 'collectedAt']} />
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>썸네일</th>
+              <th>영상 제목</th>
+              <th>게임 키워드</th>
+              <th>채널명</th>
+              <th>조회수</th>
+              <th>좋아요</th>
+              <th>댓글</th>
+              <th>업로드일</th>
+              <th>수집일</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.items.map((video) => (
+              <tr key={video.videoId}>
+                <td>
+                  {video.thumbnailUrl
+                    ? <img className="admin-thumb" src={video.thumbnailUrl} alt="" />
+                    : '-'}
+                </td>
+                <td className="admin-content-cell">{video.title}</td>
+                <td>{video.keyword}</td>
+                <td>{video.channelTitle || '-'}</td>
+                <td>{formatCount(video.viewCount)}</td>
+                <td>{formatCount(video.likeCount)}</td>
+                <td>{formatCount(video.commentCount)}</td>
+                <td>{formatDate(video.publishedAt)}</td>
+                <td>{formatDate(video.collectedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {page.items.length === 0 && <p className="admin-empty">수집된 YouTube 영상이 없습니다.</p>}
+      <Pagination page={page} onPageChange={(nextPage) => setFilters((prev) => ({ ...prev, page: nextPage }))} />
+    </AdminPanel>
+  );
+}
+
+function YoutubeLogsSection({ page, filters, setFilters }) {
+  return (
+    <AdminPanel title="YouTube 수집 로그">
+      <div className="admin-filter-grid">
+        <FilterInput label="키워드" value={filters.keyword} onChange={(keyword) => setFilters((prev) => ({ ...prev, keyword, page: 0 }))} />
+        <FilterSelect label="상태" value={filters.status} onChange={(status) => setFilters((prev) => ({ ...prev, status, page: 0 }))} options={['', 'SUCCESS', 'FAILED', 'SKIPPED']} />
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>키워드</th>
+              <th>상태</th>
+              <th>수집 개수</th>
+              <th>메시지</th>
+              <th>시작 시간</th>
+              <th>종료 시간</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.items.map((log) => (
+              <tr key={log.id}>
+                <td>{log.keyword}</td>
+                <td><StatusBadge value={log.status} /></td>
+                <td>{formatCount(log.videoCount)}</td>
+                <td className="admin-content-cell">{log.message || '-'}</td>
+                <td>{formatDate(log.startedAt)}</td>
+                <td>{formatDate(log.completedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {page.items.length === 0 && <p className="admin-empty">YouTube 수집 로그가 없습니다.</p>}
+      <Pagination page={page} onPageChange={(nextPage) => setFilters((prev) => ({ ...prev, page: nextPage }))} />
+    </AdminPanel>
+  );
+}
+
+function YoutubeKeywordsSection({ page, filters, setFilters, onCollectComments }) {
+  const [collectKeyword, setCollectKeyword] = useState(filters.keyword || '');
+  const [isCollecting, setIsCollecting] = useState(false);
+  const [collectMessage, setCollectMessage] = useState('');
+
+  const handleCollect = async (event) => {
+    event.preventDefault();
+    const keyword = collectKeyword.trim();
+    if (!keyword) {
+      setCollectMessage('댓글을 수집할 게임 키워드를 입력해주세요.');
+      return;
+    }
+    setIsCollecting(true);
+    setCollectMessage('');
+    try {
+      await onCollectComments(keyword);
+      setCollectMessage('댓글 수집과 키워드 분석이 완료되었습니다.');
+      setFilters((prev) => ({ ...prev, keyword, page: 0 }));
+    } catch (error) {
+      setCollectMessage(error.message || '댓글 수집에 실패했습니다.');
+    } finally {
+      setIsCollecting(false);
+    }
+  };
+
+  return (
+    <AdminPanel title="YouTube 댓글 주요 키워드">
+      <form className="admin-filter-grid" onSubmit={handleCollect}>
+        <FilterInput label="댓글 수집 키워드" value={collectKeyword} onChange={setCollectKeyword} />
+        <label className="admin-filter-field">
+          <span>수집 실행</span>
+          <button type="submit" disabled={isCollecting}>
+            {isCollecting ? '수집 중' : '댓글 수집'}
+          </button>
+        </label>
+      </form>
+      {collectMessage && <p className="admin-auth-error">{collectMessage}</p>}
+
+      <div className="admin-filter-grid">
+        <FilterInput label="게임 키워드" value={filters.keyword} onChange={(keyword) => setFilters((prev) => ({ ...prev, keyword, page: 0 }))} />
+        <FilterSelect label="반응" value={filters.sentiment} onChange={(sentiment) => setFilters((prev) => ({ ...prev, sentiment, page: 0 }))} options={['', 'POSITIVE', 'NEGATIVE']} />
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>게임 키워드</th>
+              <th>주요 키워드</th>
+              <th>반응</th>
+              <th>언급 수</th>
+              <th>샘플 댓글</th>
+              <th>갱신일</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.items.map((stat) => (
+              <tr key={stat.id}>
+                <td>{stat.gameKeyword}</td>
+                <td>{stat.statKeyword}</td>
+                <td><StatusBadge value={stat.sentiment} /></td>
+                <td>{formatCount(stat.mentionCount)}</td>
+                <td className="admin-content-cell">{stat.sampleText || '-'}</td>
+                <td>{formatDate(stat.updatedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {page.items.length === 0 && <p className="admin-empty">댓글 키워드 분석 결과가 없습니다.</p>}
+      <Pagination page={page} onPageChange={(nextPage) => setFilters((prev) => ({ ...prev, page: nextPage }))} />
+    </AdminPanel>
+  );
+}
+
 function SettingsSection({ authUser }) {
   return (
     <AdminPanel title="Settings">
@@ -589,6 +1056,10 @@ function formatDate(value) {
 
 function formatCount(value) {
   return new Intl.NumberFormat('ko-KR').format(Number(value) || 0);
+}
+
+function formatScore(value) {
+  return `${(Number(value) || 0).toFixed(1)}점`;
 }
 
 export function AdminAccessDeniedPage({ authUser, onGoHome, onLogout }) {

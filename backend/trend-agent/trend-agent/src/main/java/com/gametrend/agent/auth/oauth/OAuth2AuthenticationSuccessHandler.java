@@ -50,7 +50,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
     private String successRedirectUrl(String accessToken) {
         return UriComponentsBuilder.fromUriString(appProperties.frontendUrl())
-                .path("/oauth/callback")
+                .path("/")
                 .queryParam("token", accessToken)
                 .build()
                 .encode()

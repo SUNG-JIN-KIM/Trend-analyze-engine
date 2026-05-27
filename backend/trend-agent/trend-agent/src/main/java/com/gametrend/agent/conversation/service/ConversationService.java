@@ -81,6 +81,16 @@ public class ConversationService {
         return createConversation(userId, titleFromMessage(message), null);
     }
 
+    public List<ConversationMessage> findRecentMessages(Conversation conversation, int limit) {
+        if (conversation == null || conversation.getId() == null) {
+            return List.of();
+        }
+        int safeLimit = Math.max(1, Math.min(10, limit));
+        List<ConversationMessage> messages = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
+        int fromIndex = Math.max(0, messages.size() - safeLimit);
+        return messages.subList(fromIndex, messages.size());
+    }
+
     public void appendExchange(
             Conversation conversation,
             String userMessage,

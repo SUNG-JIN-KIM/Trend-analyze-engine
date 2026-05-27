@@ -7,11 +7,17 @@ import com.gametrend.agent.onboarding.dto.AgentEvidenceBundle;
 import com.gametrend.agent.onboarding.dto.AgentPlan;
 import com.gametrend.agent.onboarding.dto.AgentPlanningContext;
 import com.gametrend.agent.reinterpretation.dto.ReinterpretationCandidateResponse;
+import com.gametrend.agent.youtube.entity.GameYoutubeTrendScore;
+import com.gametrend.agent.youtube.entity.YoutubeVideo;
+import com.gametrend.agent.youtube.repository.GameYoutubeTrendScoreRepository;
+import com.gametrend.agent.youtube.repository.YoutubeVideoRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -19,25 +25,20 @@ import java.util.stream.Collectors;
 @Component
 public class AgentAnswerSynthesizer {
 
-    // ✅ 수정 1: 시스템 프롬프트를 역할 중심으로 명확하게 재작성
-    // 기존: 너무 포괄적 → LLM이 "모든 기능 소개"를 하려는 경향
-    // 개선: 대화체 + 길이 제한 + 내부정보 노출 금지를 명시
     private static final String SYSTEM_PROMPT = """
-            당신은 게임 트렌드를 잘 아는 친근한 AI입니다.
-            사용자의 질문에 짧고 자연스럽게 한국어 대화체로 답하세요.
+            너는 게임 트렌드 분석을 도와주는 한국어 AI 에이전트다.
 
-            반드시 지켜야 할 규칙:
-            1. 기본 답변은 2~4문장입니다. 사용자가 "자세히", "분석해줘"처럼 요청할 때만 길게 씁니다.
-            2. 인사나 일상 대화에는 게임 분석 데이터를 사용하지 않습니다.
-            3. 게임 추천은 기본 3개만 합니다.
-            4. AgentPlan, sessionId, memory, intent 같은 내부 용어를 답변에 절대 쓰지 않습니다.
-            5. "MVP"라는 단어 대신 "프로토타입" 또는 "작게 검증하는 버전"이라고 씁니다.
-            6. 데이터가 없으면 없다고 솔직히 말하고 대안을 제안합니다.
-            7. 숫자는 핵심 근거 하나만 쓰고 나열하지 않습니다.
-            8. 항상 한국어로만 답합니다.
-            9. 첫 문장은 사용자의 질문에 바로 답하고, 이후에 이유를 붙입니다.
-            10. 질문이 애매하면 확인 질문은 하나만 하고, 가능한 임시 해석도 함께 제시합니다.
-            11. 게임 범위 밖 질문은 짧게 한계를 말한 뒤 게임 추천/트렌드/개발 관점으로 자연스럽게 연결합니다.
+            너의 역할:
+            - 사용자의 질문을 자연스럽게 이해한다.
+            - 게임 트렌드, 유튜브 반응, 라이브 순위, 개발 아이디어를 쉽게 설명한다.
+            - 너무 딱딱한 보고서처럼 말하지 않는다.
+            - 먼저 핵심 답변을 짧게 말하고, 필요하면 근거를 덧붙인다.
+            - 데이터가 있으면 숫자와 함께 설명한다.
+            - 데이터가 없으면 지어내지 말고 "아직 수집된 데이터가 없어요"라고 말한다.
+            - 사용자가 다음에 무엇을 하면 좋을지 자연스럽게 제안한다.
+            - 답변은 한국어로 한다.
+            - AgentPlan, sessionId, memory, intent 같은 내부 용어는 답변에 절대 쓰지 않는다.
+            - "MVP"라는 단어 대신 "프로토타입" 또는 "작게 검증하는 버전"이라고 쓴다.
             """;
 
     // ✅ 수정 2: 대화형 intent는 LLM 호출 없이 즉시 반환
@@ -47,9 +48,17 @@ public class AgentAnswerSynthesizer {
     );
 
     private final LlmClient llmClient;
+    private final GameYoutubeTrendScoreRepository gameYoutubeTrendScoreRepository;
+    private final YoutubeVideoRepository youtubeVideoRepository;
 
-    public AgentAnswerSynthesizer(LlmClient llmClient) {
+    public AgentAnswerSynthesizer(
+            LlmClient llmClient,
+            GameYoutubeTrendScoreRepository gameYoutubeTrendScoreRepository,
+            YoutubeVideoRepository youtubeVideoRepository
+    ) {
         this.llmClient = llmClient;
+        this.gameYoutubeTrendScoreRepository = gameYoutubeTrendScoreRepository;
+        this.youtubeVideoRepository = youtubeVideoRepository;
     }
 
     public AgentAnswerDraft synthesize(
@@ -66,11 +75,14 @@ public class AgentAnswerSynthesizer {
         }
 
         try {
-            String userPrompt = buildPrompt(message, context, plan, evidence);
+            AgentKeywordIntent keywordIntent = classifyIntent(message);
+            YoutubePromptContext youtubeContext = buildYoutubePromptContext(message, keywordIntent);
+            String relatedData = buildRelatedDataSection(keywordIntent, youtubeContext, plan, evidence);
+            String userPrompt = buildPrompt(message, context, plan, evidence, keywordIntent, relatedData);
             String content = llmClient.complete(SYSTEM_PROMPT, userPrompt);
 
             if (content == null || content.isBlank()) {
-                return fallbackDraft(message, plan, evidence, context, fallbackSummary, fallbackAnswer);
+                return fallbackDraft(message, plan, evidence, context, fallbackSummary, fallbackAnswer, keywordIntent, youtubeContext);
             }
 
             // ✅ 수정 3: firstUsefulParagraph → extractAnswer로 교체
@@ -80,13 +92,23 @@ public class AgentAnswerSynthesizer {
 
             return new AgentAnswerDraft(
                     summaryFromPlan(plan, evidence, fallbackSummary),
-                    answer.isBlank() ? fallbackAnswer(message, plan, evidence, fallbackAnswer) : answer,
+                    answer.isBlank() ? fallbackAnswer(message, plan, evidence, fallbackAnswer, keywordIntent, youtubeContext) : answer,
                     content.strip(),
                     followUps(plan, context)
             );
         } catch (RuntimeException ex) {
             log.warn("AgentAnswerSynthesizer LLM 답변 생성 실패. fallback을 사용합니다. cause={}", ex.toString());
-            return fallbackDraft(message, plan, evidence, context, fallbackSummary, fallbackAnswer);
+            AgentKeywordIntent keywordIntent = classifyIntent(message);
+            return fallbackDraft(
+                    message,
+                    plan,
+                    evidence,
+                    context,
+                    fallbackSummary,
+                    fallbackAnswer,
+                    keywordIntent,
+                    buildYoutubePromptContext(message, keywordIntent)
+            );
         }
     }
 
@@ -147,7 +169,9 @@ public class AgentAnswerSynthesizer {
             String message,
             AgentPlanningContext context,
             AgentPlan plan,
-            AgentEvidenceBundle evidence
+            AgentEvidenceBundle evidence,
+            AgentKeywordIntent keywordIntent,
+            String relatedData
     ) {
         String depthGuide = switch (plan.responseDepth()) {
             case "SHORT" -> "2~3문장으로 핵심만 답하세요.";
@@ -165,7 +189,14 @@ public class AgentAnswerSynthesizer {
                 : "";
 
         return """
-                사용자 질문: %s
+                [최근 대화]
+                %s
+
+                [관련 데이터]
+                %s
+
+                [질문 의도]
+                %s
 
                 질문 해석:
                 %s
@@ -177,22 +208,27 @@ public class AgentAnswerSynthesizer {
 
                 %s
 
-                %s
-
                 근거 데이터:
                 %s
 
+                [현재 질문]
+                %s
+
                 위 정보를 바탕으로 사용자 질문에 자연스럽게 답하세요.
+                먼저 핵심 답변을 짧게 말하고, 필요하면 근거를 덧붙이세요.
+                데이터가 없는 내용은 추측하지 말고 "아직 수집된 데이터가 없어요"라고 말하세요.
                 내부 시스템 정보(AgentPlan, sessionId, memory, intent 등)는 절대 답변에 쓰지 마세요.
                 """.formatted(
-                safe(message),
+                previousContext,
+                safe(relatedData),
+                keywordIntent.name(),
                 questionUnderstanding,
                 playContext,
                 roleGuide,
                 depthGuide,
                 clarificationGuide,
-                previousContext,
-                evidenceSection
+                evidenceSection,
+                safe(message)
         );
     }
 
@@ -287,9 +323,18 @@ public class AgentAnswerSynthesizer {
     }
 
     private String buildPreviousContext(AgentPlanningContext context) {
-        if (context == null || context.memorySummary() == null) return "";
+        if (context == null) return "최근 대화 없음";
 
         StringBuilder sb = new StringBuilder();
+        if (context.recentMessages() != null && !context.recentMessages().isEmpty()) {
+            context.recentMessages().stream()
+                    .limit(10)
+                    .forEach(line -> sb.append(truncate(line, 350)).append("\n"));
+        }
+        if (context.memorySummary() == null) {
+            return sb.toString().isBlank() ? "최근 대화 없음" : sb.toString().strip();
+        }
+
         String summaryText = context.memorySummary().summaryText();
         if (summaryText != null && !summaryText.isBlank()) {
             sb.append("이전 대화 맥락: ").append(summaryText.strip()).append("\n");
@@ -306,7 +351,7 @@ public class AgentAnswerSynthesizer {
         if (constraints != null && !constraints.isEmpty()) {
             sb.append("사용자 제약/선호: ").append(String.join(", ", constraints)).append("\n");
         }
-        return sb.toString().strip();
+        return sb.toString().isBlank() ? "최근 대화 없음" : sb.toString().strip();
     }
 
     private String buildEvidenceSection(AgentPlan plan, AgentEvidenceBundle evidence) {
@@ -342,17 +387,110 @@ public class AgentAnswerSynthesizer {
         return sb.toString().isBlank() ? "관련 데이터 없음" : sb.toString().strip();
     }
 
+    private AgentKeywordIntent classifyIntent(String message) {
+        String normalized = safe(message).toLowerCase(Locale.ROOT);
+        if (containsAny(normalized, "유튜브", "youtube", "영상", "조회수", "댓글", "좋아요", "관심도")) {
+            return AgentKeywordIntent.YOUTUBE_TREND;
+        }
+        if (containsAny(normalized, "실시간", "순위", "인기 게임", "라이브", "방송", "트위치", "twitch", "치지직", "chzzk")) {
+            return AgentKeywordIntent.LIVE_RANKING;
+        }
+        if (containsAny(normalized, "만들고 싶", "구현", "코드", "오류", "버그", "에러", "api", "개발")) {
+            return AgentKeywordIntent.PROJECT_HELP;
+        }
+        if (containsAny(normalized, "추천", "아이디어", "장르", "컨셉", "기획")) {
+            return AgentKeywordIntent.DEVELOPMENT_IDEA;
+        }
+        if (containsAny(normalized, "트렌드", "뜨는", "유행", "시장")) {
+            return AgentKeywordIntent.GAME_TREND;
+        }
+        return AgentKeywordIntent.GENERAL_CHAT;
+    }
+
+    private YoutubePromptContext buildYoutubePromptContext(String message, AgentKeywordIntent intent) {
+        if (intent != AgentKeywordIntent.YOUTUBE_TREND
+                || gameYoutubeTrendScoreRepository == null
+                || youtubeVideoRepository == null) {
+            return YoutubePromptContext.empty();
+        }
+
+        String keyword = extractYoutubeKeyword(message);
+        if (keyword == null) {
+            return YoutubePromptContext.withMissingKeyword();
+        }
+
+        Optional<GameYoutubeTrendScore> score = gameYoutubeTrendScoreRepository.findByKeywordIgnoreCase(keyword);
+        if (score.isEmpty()) {
+            return YoutubePromptContext.noData(keyword);
+        }
+
+        List<YoutubeVideo> topVideos = youtubeVideoRepository.findByKeywordOrderByViewCountDesc(keyword)
+                .stream()
+                .limit(3)
+                .toList();
+        return YoutubePromptContext.withData(keyword, score.get(), topVideos);
+    }
+
+    private String extractYoutubeKeyword(String message) {
+        String normalized = safe(message)
+                .replaceAll("(?i)youtube", " ")
+                .replace("유튜브", " ")
+                .replace("반응", " ")
+                .replace("어때", " ")
+                .replace("조회수", " ")
+                .replace("댓글", " ")
+                .replace("좋아요", " ")
+                .replace("영상", " ")
+                .replace("관심도", " ")
+                .replace("트렌드", " ")
+                .replace("분석", " ")
+                .replace("알려줘", " ")
+                .replace("?", " ")
+                .strip();
+        normalized = normalized.replaceAll("\\s+", " ");
+        if (normalized.isBlank()) {
+            return null;
+        }
+        return normalized.length() > 80 ? normalized.substring(0, 80).strip() : normalized;
+    }
+
+    private String buildRelatedDataSection(
+            AgentKeywordIntent intent,
+            YoutubePromptContext youtubeContext,
+            AgentPlan plan,
+            AgentEvidenceBundle evidence
+    ) {
+        if (intent == AgentKeywordIntent.YOUTUBE_TREND) {
+            return youtubeContext.toPromptText();
+        }
+        if (intent == AgentKeywordIntent.LIVE_RANKING && evidence != null && evidence.liveTrendGames() != null && !evidence.liveTrendGames().isEmpty()) {
+            return """
+                    [수집된 라이브 순위 데이터]
+                    %s
+                    """.formatted(liveTrendLines(evidence.liveTrendGames()));
+        }
+        if (evidence != null && evidence.evidenceCards() != null && !evidence.evidenceCards().isEmpty()) {
+            return evidence.evidenceCards().stream()
+                    .limit(3)
+                    .map(card -> "- %s: %s".formatted(safe(card.title()), safe(card.description())))
+                    .collect(Collectors.joining("\n"));
+        }
+        return "관련 데이터 없음";
+    }
+
     private AgentAnswerDraft fallbackDraft(
             String message,
             AgentPlan plan,
             AgentEvidenceBundle evidence,
             AgentPlanningContext context,
             String fallbackSummary,
-            String fallbackAnswer
+            String fallbackAnswer,
+            AgentKeywordIntent keywordIntent,
+            YoutubePromptContext youtubeContext
     ) {
         return new AgentAnswerDraft(
                 summaryFromPlan(plan, evidence, fallbackSummary),
-                fallbackAnswer(message, plan, evidence, fallbackAnswer),
+                fallbackAnswer(message, plan, evidence, fallbackAnswer, keywordIntent, youtubeContext),
                 fallbackReport(plan, evidence, fallbackSummary, fallbackAnswer),
                 followUps(plan, context)
         );
@@ -371,7 +509,21 @@ public class AgentAnswerSynthesizer {
         return fallbackSummary;
     }
 
-    private String fallbackAnswer(String message, AgentPlan plan, AgentEvidenceBundle evidence, String fallbackAnswer) {
+    private String fallbackAnswer(
+            String message,
+            AgentPlan plan,
+            AgentEvidenceBundle evidence,
+            String fallbackAnswer,
+            AgentKeywordIntent keywordIntent,
+            YoutubePromptContext youtubeContext
+    ) {
+        if (keywordIntent == AgentKeywordIntent.YOUTUBE_TREND) {
+            if (youtubeContext != null && youtubeContext.hasData()) {
+                return youtubeContext.fallbackAnswer();
+            }
+            String keyword = youtubeContext == null || youtubeContext.keyword() == null ? "해당 게임" : youtubeContext.keyword();
+            return "%s는 아직 수집된 YouTube 데이터가 없어요. 관리자 페이지에서 먼저 YouTube 수집을 실행하면 조회수, 좋아요, 댓글, 관심도 점수 기준으로 더 정확히 설명해드릴 수 있어요.".formatted(keyword);
+        }
         if (plan.needsGameRecommendation()) {
             boolean soloPlay = containsAny(safe(message).toLowerCase(Locale.ROOT), "혼자", "솔로", "1인", "싱글", "single", "singleplayer", "single-player", "solo");
             if (!evidence.liveTrendGames().isEmpty()) {
@@ -431,7 +583,7 @@ public class AgentAnswerSynthesizer {
                 %s
                 """.formatted(
                 summaryFromPlan(plan, evidence, fallbackSummary),
-                fallbackAnswer("", plan, evidence, fallbackAnswer),
+                fallbackAnswer("", plan, evidence, fallbackAnswer, AgentKeywordIntent.GENERAL_CHAT, YoutubePromptContext.empty()),
                 liveTrendLines(evidence.liveTrendGames()),
                 reinterpretationLines(evidence.reinterpretationCandidates())
         );
@@ -490,6 +642,13 @@ public class AgentAnswerSynthesizer {
         return value == null || value.isBlank() ? "없음" : value.strip();
     }
 
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
+    }
+
     private boolean containsAny(String value, String... keywords) {
         if (value == null || keywords == null) {
             return false;
@@ -500,5 +659,100 @@ public class AgentAnswerSynthesizer {
             }
         }
         return false;
+    }
+
+    private enum AgentKeywordIntent {
+        GAME_TREND,
+        YOUTUBE_TREND,
+        LIVE_RANKING,
+        DEVELOPMENT_IDEA,
+        PROJECT_HELP,
+        GENERAL_CHAT
+    }
+
+    private record YoutubePromptContext(
+            String keyword,
+            GameYoutubeTrendScore score,
+            List<YoutubeVideo> topVideos,
+            boolean missingKeyword
+    ) {
+        static YoutubePromptContext empty() {
+            return new YoutubePromptContext(null, null, List.of(), false);
+        }
+
+        static YoutubePromptContext withMissingKeyword() {
+            return new YoutubePromptContext(null, null, List.of(), true);
+        }
+
+        static YoutubePromptContext noData(String keyword) {
+            return new YoutubePromptContext(keyword, null, List.of(), false);
+        }
+
+        static YoutubePromptContext withData(String keyword, GameYoutubeTrendScore score, List<YoutubeVideo> topVideos) {
+            return new YoutubePromptContext(keyword, score, topVideos == null ? List.of() : topVideos, false);
+        }
+
+        boolean hasData() {
+            return score != null;
+        }
+
+        String toPromptText() {
+            if (missingKeyword) {
+                return "[수집된 YouTube 데이터]\n게임 키워드를 특정하지 못했습니다. 사용자에게 어떤 게임을 볼지 물어보세요.";
+            }
+            if (keyword == null || keyword.isBlank()) {
+                return "[수집된 YouTube 데이터]\n아직 수집된 YouTube 데이터가 없습니다.";
+            }
+            if (score == null) {
+                return """
+                        [수집된 YouTube 데이터]
+                        게임 키워드: %s
+                        아직 수집된 YouTube 데이터가 없습니다.
+                        """.formatted(keyword);
+            }
+
+            String videoLines = topVideos.isEmpty()
+                    ? "- 상위 영상 데이터 없음"
+                    : topVideos.stream()
+                    .sorted(Comparator.comparingLong(YoutubeVideo::getViewCount).reversed())
+                    .limit(3)
+                    .map(video -> "- %s / 조회수 %,d".formatted(video.getTitle(), video.getViewCount()))
+                    .collect(Collectors.joining("\n"));
+
+            return """
+                    [수집된 YouTube 데이터]
+                    게임 키워드: %s
+                    영상 수: %,d개
+                    총 조회수: %,d
+                    총 좋아요: %,d
+                    총 댓글: %,d
+                    관심도 점수: %.1f
+                    상위 영상:
+                    %s
+                    """.formatted(
+                    score.getKeyword(),
+                    score.getVideoCount(),
+                    score.getTotalViewCount(),
+                    score.getTotalLikeCount(),
+                    score.getTotalCommentCount(),
+                    score.getYoutubeInterestScore(),
+                    videoLines
+            );
+        }
+
+        String fallbackAnswer() {
+            if (score == null) {
+                return "%s는 아직 수집된 YouTube 데이터가 없어요. 먼저 YouTube 데이터를 수집하면 조회수와 댓글 반응까지 같이 볼 수 있습니다."
+                        .formatted(keyword == null ? "해당 게임" : keyword);
+            }
+            return "%s는 수집된 YouTube 데이터 기준으로 반응이 꽤 뚜렷해요. 영상 %,d개에서 총 조회수 %,d회, 댓글 %,d개가 잡혔고 관심도 점수는 %.1f점입니다. 상위 영상 흐름까지 보면 단순 조회수뿐 아니라 실제 반응도 같이 확인해보면 좋아요."
+                    .formatted(
+                            score.getKeyword(),
+                            score.getVideoCount(),
+                            score.getTotalViewCount(),
+                            score.getTotalCommentCount(),
+                            score.getYoutubeInterestScore()
+                    );
+        }
     }
 }

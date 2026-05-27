@@ -14,11 +14,13 @@ import com.gametrend.agent.conversation.exception.ConversationNotFoundException;
 import com.gametrend.agent.onboarding.exception.OnboardingHistoryNotFoundException;
 import com.gametrend.agent.project.exception.UserProjectNotFoundException;
 import com.gametrend.agent.trend.exception.TrendGameNotFoundException;
+import com.gametrend.agent.youtube.service.YoutubeTrendException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 
 import java.util.List;
 
@@ -181,6 +183,33 @@ public class ApiExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(YoutubeTrendException.class)
+    public ResponseEntity<ErrorResponse> handleYoutubeTrendException(YoutubeTrendException exception) {
+        ErrorResponse response = ErrorResponse.of(
+                "YOUTUBE_TREND_ERROR",
+                "YouTube 트렌드 데이터를 처리하지 못했습니다.",
+                List.of(resolveMessage(exception))
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingServletRequestParameterException(
+            MissingServletRequestParameterException exception
+    ) {
+        String message = "keyword".equals(exception.getParameterName())
+                ? "게임 키워드를 입력해주세요."
+                : "%s 파라미터는 필수입니다.".formatted(exception.getParameterName());
+        ErrorResponse response = ErrorResponse.of(
+                "MISSING_REQUEST_PARAMETER",
+                message,
+                List.of(message)
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

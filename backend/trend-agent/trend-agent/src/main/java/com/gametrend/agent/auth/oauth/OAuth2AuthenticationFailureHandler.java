@@ -29,7 +29,7 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
 
     private String errorRedirectUrl() {
         return UriComponentsBuilder.fromUriString(appProperties.frontendUrl())
-                .path("/oauth/callback")
+                .path("/login")
                 .queryParam("error", "oauth_failed")
                 .build()
                 .encode()

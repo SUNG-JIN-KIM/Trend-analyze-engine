@@ -49,6 +49,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .rememberMe(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
@@ -58,6 +59,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin-approval/request").authenticated()
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "OWNER")
+                        .requestMatchers("/admin/youtube/**").hasAnyRole("ADMIN", "OWNER")
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "OWNER")
                         .requestMatchers("/api/conversations/**").authenticated()
                         .requestMatchers(
@@ -85,13 +87,15 @@ public class SecurityConfig {
                         .successHandler(oAuth2AuthenticationSuccessHandler)
                         .failureHandler(oAuth2AuthenticationFailureHandler)
                 )
+                .logout(logout -> logout
+                        .logoutUrl("/api/auth/logout")
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .deleteCookies("JSESSIONID", "remember-me")
+                        .logoutSuccessHandler((request, response, authentication) -> response.setStatus(HttpStatus.NO_CONTENT.value()))
+                )
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> writeError(
-                                response,
-                                HttpStatus.UNAUTHORIZED,
-                                "AUTH_REQUIRED",
-                                "로그인이 필요한 요청입니다."
-                        ))
+                        .authenticationEntryPoint((request, response, authException) -> handleAuthenticationRequired(request, response))
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeError(
                                 response,
                                 HttpStatus.FORBIDDEN,
@@ -107,6 +111,23 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    private void handleAuthenticationRequired(
+            jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response
+    ) throws IOException {
+        String requestUri = request.getRequestURI();
+        if (requestUri != null && requestUri.startsWith("/api/")) {
+            writeError(
+                    response,
+                    HttpStatus.UNAUTHORIZED,
+                    "AUTH_REQUIRED",
+                    "로그인이 필요한 요청입니다."
+            );
+            return;
+        }
+        response.sendRedirect(requestUri != null && requestUri.startsWith("/admin/") ? "/admin/login" : "/login");
     }
 
     private void writeError(

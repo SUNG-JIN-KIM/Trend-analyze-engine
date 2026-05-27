@@ -25,7 +25,7 @@ public record LlmProperties(
             timeoutMs = 30_000L;
         }
         if (temperature == null) {
-            temperature = 0.2;
+            temperature = 0.7;
         }
     }
 }
